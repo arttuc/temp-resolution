@@ -2,7 +2,7 @@
 
 Script to set a temporary screen resolution and prevent the resolution from changing while games are running.
 
-The primary use case is to automatically switch to lower resolution when streaming games with [Sunshine](https://github.com/LizardByte/Sunshine).
+The primary use case is to automatically switch to lower resolution when streaming games with [Sunshine](https://github.com/LizardByte/Sunshine) and switch back when streaming is over.
 
 ## Usage
 
