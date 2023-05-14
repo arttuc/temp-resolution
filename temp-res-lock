@@ -1,0 +1,26 @@
+#!/bin/bash
+if [ ! -n "$1" ] & [ ! -n "$2" ]
+then
+	echo "Usage: temp-res-lock <lock> <program>"
+	exit 1
+fi
+
+lock="$1"
+
+if type temp-resolution >/dev/null 2>/dev/null
+then
+	bin=temp-resolution
+else
+	bin=./temp-resolution
+fi
+
+trap unlock INT
+
+unlock () {
+	$bin unlock "$lock"
+	exit
+}
+
+$bin lock "$lock"
+exec "${@:2}" | true
+$bin unlock "$lock"

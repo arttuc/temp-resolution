@@ -1,0 +1,169 @@
+#!/bin/bash
+currentdir=$(readlink -f ./)
+tmpdir=/dev/shm/temp-resolution/
+#echo "currentdir: $currentdir"
+#echo "tmpdir:     $tmpdir"
+mkdir -pv "$tmpdir"
+mkdir -pv "$tmpdir/lock"
+cd $tmpdir
+
+get_primary_output () {
+	echo "$(xrandr | awk '/ primary / {print $1}')"
+}
+
+get_resolution () {
+	xrandr --query | grep "$1" | sed -n 's/.* primary \([0-9]*\)x\([0-9]*\)+.*/\1x\2/p'
+}
+
+set_resolution () {
+	xrandr --output "$1" --mode "$2"
+}
+
+sanitize () {
+	echo $(echo $1 | tr -dc "[:alnum:]\n\r")
+}
+
+undo () {
+	if [ -f "./undo-output" ] && [ -f "./undo-resolution" ]
+	then
+		if [ -z "$(ls -A ./lock/)" ]
+		then
+			if [ "$(cat ./undo-output)" = "$(get_primary_output)" ]
+			then
+				set_resolution "$(cat ./undo-output)" "$(cat ./undo-resolution)" "60"
+				echo "Resolution changes undone."
+			else
+				echo "Monitor does not match previous used monitor! Erasing outdated undo information..."
+			fi
+			rm -vf "./undo-output"
+			rm -vf "./undo-resolution"
+			exit 0
+		else
+			echo "Resolution is locked! Saving undo request for next command..."
+			touch ./undo-request
+			exit 0
+		fi
+	else
+		echo "Nothing to undo."
+		exit 0
+	fi
+}
+
+case $1 in
+	set)
+		if [ -n "$2" ]
+		then
+			if [ -z "$(ls -A ./lock/)" ]
+			then
+				echo "Applying..."
+				primary_output=$(get_primary_output)
+				if [ ! -f "./undo-output" ] || [ ! -f "./undo-resolution" ]
+				then
+					echo "Saving previous resolution for undo..."
+					echo "$primary_output" > "./undo-output"
+					echo "$(get_resolution $primary_output)" > "./undo-resolution"
+				fi
+				set_resolution $primary_output "$2"
+				exit 0
+			else
+				echo "Resolution is locked!"
+				exit 0
+			fi
+		else
+			echo "No resolution specified"
+			exit 1
+		fi
+		;;
+	undo)
+		undo
+		exit 0
+		;;
+	lock)
+		i=$(sanitize $2)
+		if [ -n "$i" ]
+		then
+			if [ ! -f "./lock/$i" ]
+			then
+				touch "./lock/$i"
+				echo "Lock '$i' has been locked."
+				exit 0
+			else
+				echo "Lock '$i' is already locked!"
+				exit 0
+			fi
+		else
+			echo "Please specify a name for the lock."
+			exit 0
+		fi
+		;;
+	unlock)
+		i=$(sanitize $2)
+		if [ -n "$i" ]
+		then
+			if [ -f "./lock/$i" ]
+			then
+				rm -v "./lock/$i"
+				echo "Lock '$i' has been unlocked."
+				if [ -z "$(ls -A ./lock/)" ] && [ -f ./undo-request ]
+				then
+					echo "Undoing resolution changes as requested previously..."
+					rm -v "./undo-request"
+					undo
+				fi
+				exit 0
+			else
+				echo "Lock '$i' is already unlocked!"
+				exit 0
+			fi
+		else
+			echo "Please specify what lock you are unlocking."
+			exit 0
+		fi
+		;;
+	unlock-all)
+		if [ ! -z "$(ls -A ./lock/)" ]
+		then
+			for f in $(ls -A ./lock/)
+			do
+				rm -v "./lock/$f"
+			done
+			echo "All locks have been unlocked."
+			if [ -f ./undo-request ]
+			then
+				echo "Undoing resolution changes as requested previously..."
+				rm -v "./undo-request"
+				undo
+			fi
+			exit 0
+		else
+			echo "No locks to unlock."
+			exit 0
+		fi
+		;;
+	list-locks)
+		echo "Locks: "
+		for f in $(ls -A ./lock/)
+		do
+			echo "$f"
+		done
+		exit 0
+		;;
+	remove-undo-request)
+		rm -v "./undo-request"
+		exit 0
+		;;
+	help|?|-h|--help|*)
+		echo "Usage:"
+		echo "temp-resolution set <resolution, ex. '1920x1080'>"
+		echo "temp-resolution undo"
+		echo "temp-resolution lock <name>"
+		echo "temp-resolution unlock <name>"
+		echo "temp-resolution unlock-all"
+		echo "temp-resolution list-locks"
+		echo "temp-resolution remove-undo-request"
+		echo ""
+		echo "Launch your program with temp-res-lock to automatically lock and unlock when the program quits."
+		echo "Usage: temp-res-lock <lock> <program>"
+		exit 1
+		;;
+esac
