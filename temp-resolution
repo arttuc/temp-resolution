@@ -7,6 +7,10 @@ mkdir -pv "$tmpdir"
 mkdir -pv "$tmpdir/lock"
 cd $tmpdir
 
+notify () {
+	notify-send --app-name=temp-resolution --category=temp-resolution "$1"
+}
+
 get_primary_output () {
 	echo "$(xrandr | awk '/ primary / {print $1}')"
 }
@@ -32,6 +36,7 @@ undo () {
 			then
 				set_resolution "$(cat ./undo-output)" "$(cat ./undo-resolution)" "60"
 				echo "Resolution changes undone."
+				notify "Resolution changes undone."
 			else
 				echo "Monitor does not match previous used monitor! Erasing outdated undo information..."
 			fi
@@ -40,6 +45,7 @@ undo () {
 			exit 0
 		else
 			echo "Resolution is locked! Saving undo request for next command..."
+			notify "Cannot undo resolution changes, locked. Resolution changes will be undone once all locks have been unlocked."
 			touch ./undo-request
 			exit 0
 		fi
@@ -64,9 +70,11 @@ case $1 in
 					echo "$(get_resolution $primary_output)" > "./undo-resolution"
 				fi
 				set_resolution $primary_output "$2"
+				notify "Resolution has been temporarily changed to $2"
 				exit 0
 			else
 				echo "Resolution is locked!"
+				notify "Cannot change resolution, locked."
 				exit 0
 			fi
 		else
@@ -84,6 +92,10 @@ case $1 in
 		then
 			if [ ! -f "./lock/$i" ]
 			then
+				if [ ! -z "$(ls -A ./lock/)" ]
+				then
+					notify "Resolution changes are now locked."
+				fi
 				touch "./lock/$i"
 				echo "Lock '$i' has been locked."
 				exit 0
@@ -104,11 +116,15 @@ case $1 in
 			then
 				rm -v "./lock/$i"
 				echo "Lock '$i' has been unlocked."
-				if [ -z "$(ls -A ./lock/)" ] && [ -f ./undo-request ]
+				if [ -z "$(ls -A ./lock/)" ]
 				then
-					echo "Undoing resolution changes as requested previously..."
-					rm -v "./undo-request"
-					undo
+					notify "Resolution changes are now unlocked."
+					if [ -f ./undo-request ]
+					then
+						echo "Undoing resolution changes as requested previously..."
+						rm -v "./undo-request"
+						undo
+					fi
 				fi
 				exit 0
 			else
@@ -128,6 +144,7 @@ case $1 in
 				rm -v "./lock/$f"
 			done
 			echo "All locks have been unlocked."
+			notify "Resolution changes are now unlocked."
 			if [ -f ./undo-request ]
 			then
 				echo "Undoing resolution changes as requested previously..."
